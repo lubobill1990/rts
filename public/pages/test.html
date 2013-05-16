@@ -1,0 +1,21 @@
+<html>
+<head>
+    <script type="text/javascript" src='//code.jquery.com/jquery-1.9.1.min.js'></script>
+    <script type="text/javascript" src="/public/javascripts/engine.io-dev.js"></script>
+    <script type="text/javascript">
+        var socket=new eio.Socket('ws://npeasy.com:3000/',{
+            "upgrade":false
+        })
+        socket.on('open',function(){
+            socket.send('ad')
+            socket.on('message',function(data){
+                $('body').append(data+"<br />")
+                socket.send(data)
+            })
+            socket.on('close',function(){
+                console.log('close')
+            })
+        })
+    </script>
+</head>
+</html>
