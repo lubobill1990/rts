@@ -44,6 +44,29 @@ app.all("/send",function(req,res){
     }
     res.send(response_data)
 })
+var postSecret='5199DED1ECBBF664AD4376306FD45F19';
+var checkSenderPermission = function (req, res, next) {
+    if (req.param('postSecret') == postSecret) {
+        next();
+    } else {
+        res.send('post keyword is not right');
+    }
+}
+app.all("/chat",checkSenderPermission,function(req,res){
+    var user_id=req.param('fromUserId')
+    var to_user_id=req.param('toUserId')
+    var content=req.param('content')
+    var timestamp=req.param('timestamp')
+    sendDataToUser(to_user_id,{
+        type:'chat',
+        data:{
+            from_user_id:user_id,
+            content:content,
+            timestamp:timestamp
+        }
+    })
+    res.end();
+})
 app.all("/identity", function (req, res) {
     var conn_id = req.param("conn_id");
     var from_site = req.param("from_site");
@@ -86,6 +109,21 @@ server = engine.attach(http_server);
 var sock_pool = {};
 var user_sock_id = {};
 
+function sendDataToUser(user_id,data){
+    if(typeof(data)!='string'){
+        data=JSON2.stringify(data);
+    }
+    var to_user_sock_ids=user_sock_id[user_id];
+    if(to_user_sock_ids!=undefined){
+        for(var i in to_user_sock_ids){
+            if(sock_pool[to_user_sock_ids[i]]!=undefined){
+                sock_pool[to_user_sock_ids[i]].send(data)
+            }
+        }
+        return true;
+    }
+    return false;
+}
 server.on('connection', function (socket) {
     sock_pool[socket.id] = socket;
     socket.on('close', function () {
@@ -95,7 +133,6 @@ server.on('connection', function (socket) {
         }
         sock_pool[socket.id] = undefined;
     })
-    socket.on('message', function (data) {
-        console.log(data)
-    })
 })
+//TODO 每隔一段时间将sock_pool中的连接检查一遍连通性,删除僵尸连接
+//TODO 每隔一段时间将user_sock_id中undefined的sock删掉
