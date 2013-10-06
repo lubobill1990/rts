@@ -1,20 +1,21 @@
 {
-    "name": "rts",
-    "version": "0.0.1",
-    "private": true,
-    "scripts": {
-        "start": "supervisor index.js"
-    },
-    "dependencies": {
-        "jade": "*",
-        "redis": "*",
-        "connect-redis": "*",
-        "xregexp": "*",
-        "hiredis": "*",
-        "underscore": "*",
-        "engine.io": "*",
-        "supervisor": "*",
-        "express":"*",
-        "JSON2":"*"
-    }
+  "name": "rts",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "jade": "*",
+    "redis": "*",
+    "connect-redis": "*",
+    "xregexp": "*",
+    "hiredis": "*",
+    "underscore": "*",
+    "engine.io": "*",
+    "supervisor": "*",
+    "express": "*",
+    "JSON2": "*",
+    "request": "*"
+  }
 }
