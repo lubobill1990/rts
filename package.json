@@ -1,6 +1,12 @@
 {
   "name": "rts",
   "version": "0.0.1",
+  "author": {
+    "name": "Bo Lu",
+    "email": "lubobill1990@163.com"
+  },
+  "main": "./index.js",
+  "readme":"#title",
   "private": true,
   "scripts": {
     "start": "node index.js"
@@ -16,6 +22,7 @@
     "supervisor": "*",
     "express": "*",
     "JSON2": "*",
-    "request": "*"
+    "request": "*",
+    "underscore": ""
   }
 }

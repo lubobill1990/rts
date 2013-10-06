@@ -10,8 +10,10 @@ var express = require('express')
   , path = require('path')
   , http = require('http');
 var JSON2 = require('JSON2');
+var _ = require('underscore');
 var request_lib = require('request');
-var conn_pool=require('./ConnPool');
+var conn_pool = require('./ConnPool');
+var communication = require('./Communication');
 var server_url = "http://npeasy.com:3000";
 var app = express();
 var RedisStore = require('connect-redis')(express);
@@ -34,19 +36,9 @@ app.configure('all', function () {
   app.use(app.router);
   app.use('/public', express.static(path.join(__dirname, '/public')));
 });
-//TODO for debug, not safe
-app.all("/send", function (req, res) {
-  var to_user_id = req.param('to_user_id');
-  var response_data = '';
-  var to_user_sock_ids = user_sock_id[to_user_id];
-  if (to_user_sock_ids != undefined) {
-    response_data += to_user_sock_ids.length + " sockets on"
-    for (var i in to_user_sock_ids) {
-      sock_pool[to_user_sock_ids[i]].send('message')
-    }
-  }
-  res.send(response_data)
-})
+function isInt(value) {
+  return !isNaN(parseInt(value, 10)) && (parseFloat(value, 10) == parseInt(value, 10));
+}
 var postSecret = '5199DED1ECBBF664AD4376306FD45F19';
 var checkSenderPermission = function (req, res, next) {
   if (req.param('postSecret') == postSecret) {
@@ -55,32 +47,102 @@ var checkSenderPermission = function (req, res, next) {
     res.send('post keyword is not right');
   }
 }
+
 app.all("/chat", checkSenderPermission, function (req, res) {
   var user_id = req.param('fromUserId')
   var to_user_id = req.param('toUserId')
   var content = req.param('content')
   var timestamp = req.param('timestamp')
-  sendDataToUser(to_user_id, {
-    type: 'chat',
+  if (isInt(to_user_id)) {
+    communication.sendToUser(to_user_id, {
+      type: 'chat',
+      data: {
+        from_user_id: user_id,
+        content: content,
+        timestamp: timestamp
+      }
+    })
+  }
+
+  res.end();
+})
+/**
+ * required param
+ * 1. data
+ */
+app.all("/publish/:channel_id/:event_name", checkSenderPermission, function (req, res) {
+  var channel_id = req.param("channel_id");
+  var event_name = req.param("event_name");
+  var data = req.param('data')
+  try {
+    data = JSON2.parse(data);
+  } catch (e) {
+    console.log("published data should be a valid json string");
+    data = "";
+  }
+  communication.publishToChannel(channel_id, {
+    type: "channel",
     data: {
-      from_user_id: user_id,
-      content: content,
-      timestamp: timestamp
+      id: channel_id,
+      event: event_name,
+      data: data
     }
   })
   res.end();
-})
-app.all("/publish/:channelName/:eventName", checkSenderPermission, function (req, res) {
-  var channelName = req.param("channelName");
-  var eventName = req.param("eventName");
-  var data = req.param('data')
-  try {
-    publishDataToChannel(channelName, eventName, data);
-    res.send('success')
-  } catch (e) {
-    res.send(e);
-  }
 });
+
+/**
+ * in request data, there should contain:
+ * 1. user_id_list: int string split by comma, example: 1,2,46,23
+ * 2. data in json string format
+ */
+app.all("/publishToUsers/:channel_id/:event_name", checkSenderPermission, function (req, res) {
+  var user_id_array = req.param('user_id_list');
+  var channel_id = req.param('channel_id');
+  var event_name = req.param('event_name');
+  var data = req.param('data');
+  if (user_id_array != undefined) {
+    try {
+      data = JSON2.parse(data);
+    } catch (e) {
+      console.log("published data should be a valid json string");
+      data = "";
+    }
+    data = {
+      type: "channel",
+      data: {
+        id: channel_id,
+        event: event_name,
+        data: data
+      }
+    }
+    user_id_array = user_id_array.split(',');
+    var user_id_array_purified = [];
+    for (var i in user_id_array) {
+      if (isInt(user_id_array[i])) {
+        user_id_array_purified.push(user_id_array[i])
+      }
+    }
+    communication.publishToUsersOnChannel(channel_id, user_id_array_purified, data)
+  }
+
+  res.end();
+})
+app.all("/sendTo", checkSenderPermission, function (req, res) {
+  var user_id;
+  var user_id_list;
+  var data = req.param('data')
+
+  if (data == undefined) {
+    data = ''
+  }
+  if ((user_id = req.param('user_id')) != undefined) {
+    user_id = parseInt(user_id)
+    communication.sendToUser(user_id, data)
+  } else if ((user_id_list = req.param('user_id_list')) != undefined) {
+  }
+  res.end();
+})
 
 app.all("/identity", function (req, res) {
   var conn_id = req.param("conn_id");
@@ -99,7 +161,7 @@ app.all("/receive_auth_code", function (req, res) {
         return;
       }
       var user_id = user_obj['user_id'];
-      conn_pool.user_pool.add(user_id,conn_id);
+      conn_pool.user_pool.add(user_id, conn_id);
     }
   })
   res.send('')
@@ -108,85 +170,11 @@ http_server = http.createServer(app).listen(app.get('port'), function () {
   console.log("Express server listening on port " + app.get('port'));
 });
 server = engine.attach(http_server);
-var sock_pool = {};
-var user_sock_id = {};
 
-function sendDataToUser(user_id, data) {
-  if (typeof(data) != 'string') {
-    data = JSON2.stringify(data);
-  }
-
-  var to_user_sock_ids = user_sock_id[user_id];
-  if (to_user_sock_ids != undefined) {
-    for (var i in to_user_sock_ids) {
-      if (sock_pool[to_user_sock_ids[i]] != undefined) {
-        sock_pool[to_user_sock_ids[i]].send(data)
-      }
-    }
-    return true;
-  }
-  return false;
-}
-//TODO feature:subscribe privilege
-var channel_connection_pool = {};
-/**
- * subscribe a socket to a channel and receive all events in the channel
- * @param channel_id
- * @param socket
- */
-function subscribeChannel(channel_id, socket) {
-  var socket_id = socket.id;
-  if (channel_connection_pool[channel_id] === undefined) {
-    channel_connection_pool[channel_id] = {};
-  }
-  channel_connection_pool[channel_id][socket_id] = true;
-}
-/**
- * send json string as js object to channel_event in given channel
- * if the data is not valid json string, exception will be thrown
- * @param channel_id
- * @param event_name
- * @param data should be a json string
- * @returns {boolean}
- */
-function publishDataToChannel(channel_id, event_name, data) {
-  var channel_socket_ids = channel_connection_pool[channel_id];
-
-  if (channel_socket_ids === undefined) {
-    return false;
-  }
-  try {
-    data = JSON2.parse(data);
-  } catch (e) {
-    throw "data should be a valid json string";
-  }
-  var publish_data = JSON2.stringify(
-    {
-      type: "channel",
-      data: {
-        id: channel_id,
-        event: event_name,
-        data: data
-      }
-    })
-  for (var socket_id in channel_socket_ids) {
-    var socket = sock_pool[socket_id];
-    if (socket === undefined) {
-      delete channel_socket_ids[socket_id];
-      continue;
-    }
-    socket.send(publish_data)
-  }
-}
 server.on('connection', function (socket) {
-  sock_pool[socket.id] = socket;
+  conn_pool.socket_pool.connect(socket);
   socket.on("close", function () {
-    if (socket.user_id != undefined) {
-      var index = user_sock_id[socket.user_id].indexOf(socket.id);
-      user_sock_id[socket.user_id].splice(index, 1);
-
-    }
-    sock_pool[socket.id] = undefined;
+    conn_pool.socket_pool.close(socket.id);
   })
   socket.on("message", function (data) {
     try {
@@ -194,9 +182,8 @@ server.on('connection', function (socket) {
       if (data.type != undefined) {
         switch (data.type) {
           case "subscribe"://subscribe to a channel
-            var channel_id = data.data;
-            console.log('subscribe ' + channel_id)
-            subscribeChannel(channel_id, socket);
+            //check subscribe permission
+            conn_pool.channel_pool.subscribe(data.data, socket.id)
             break;
         }
       }
@@ -205,5 +192,6 @@ server.on('connection', function (socket) {
     }
   })
 })
-//TODO 每隔一段时间将sock_pool中的连接检查一遍连通性,删除僵尸连接
-//TODO 每隔一段时间将user_sock_id中undefined的sock删掉
+conn_pool.user_pool.on('userLogin',function(user_id){
+  console.log(user_id)
+})

@@ -7,8 +7,16 @@
  */
 var conn_pool = require('./ConnPool')
 var JSON2 = require('JSON2');
+var _ = require('underscore');
 
 function sendDataToSocketIdArray(socket_id_array, data) {
+  if (typeof data == 'object') {
+    try {
+      data = JSON2.stringify(data);
+    } catch (e) {
+
+    }
+  }
   var socket_array = conn_pool.socket_pool.mget(socket_id_array);
   for (var i in socket_array) {
     socket_array[i].send(data);
@@ -19,8 +27,8 @@ function sendDataToSocketIdArray(socket_id_array, data) {
  * @param user_id
  * @param data
  */
-function sendToUser(user_id, data) {
-  sendDataToSocketIdArray(conn_pool.user_pool.getUserSocketIdArray(user_id));
+exports.sendToUser = function (user_id, data) {
+  sendDataToSocketIdArray(conn_pool.user_pool.getUserSocketIdArray(user_id), data);
 }
 
 /**
@@ -28,19 +36,25 @@ function sendToUser(user_id, data) {
  * @param channel_id
  * @param data
  */
-function publishToChannel(channel_id, data) {
-  sendDataToSocketIdArray(conn_pool.channel_pool.getChannelSocketIdArray(channel_id));
+exports.publishToChannel = function (channel_id, data) {
+  sendDataToSocketIdArray(conn_pool.channel_pool.getChannelSocketIdArray(channel_id), data);
 }
-
-function publishToUserOnChannel(channel_id, user_id, data) {
-  if (conn_pool.channel_pool.isUserExistsOnChannel(channel_id, user_id)) {
-    sendToUser(user_id, data);
-  }
+/**
+ * send data string in the format of json to sockets of user subscribe to channel
+ * @param channel_id
+ * @param user_id
+ * @param data
+ */
+exports.publishToUserOnChannel = function (channel_id, user_id, data) {
+  sendDataToSocketIdArray(conn_pool.channel_pool.getUserSocketIdArrayOnChannel(channel_id, user_id), data)
 }
-
-function publishToUsersOnChannel(channel_id, user_id_array, data) {
-  var user_id_array = conn_pool.channel_pool.existUsersOnChannel(channel_id, user_id_array);
-  for (var user_id in user_id_array) {
-    sendToUser(user_id, data);
-  }
+/**
+ * send data string in the format of json to sockets of users subscribe to channel
+ * @param channel_id
+ * @param user_id_array
+ * @param data
+ */
+exports.publishToUsersOnChannel = function (channel_id, user_id_array, data) {
+  user_id_array = _.uniq(user_id_array)
+  sendDataToSocketIdArray(conn_pool.channel_pool.getUsersSocketIdArrayOnChannel(channel_id, user_id_array), data)
 }
