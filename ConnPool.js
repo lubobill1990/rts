@@ -242,10 +242,10 @@ UserPool.prototype.onUserLogout = function (user_id) {
 }
 
 UserPool.prototype.onAllUsersLogout = function (user_id) {
-  this.emit('onAllUsersLogout ', user_id)
+  this.emit('allUsersLogout ', user_id)
 }
 UserPool.prototype.onFirstUserLogin = function (user_id) {
-  this.emit('onFirstUserLogin ', user_id)
+  this.emit('firstUserLogin ', user_id)
 }
 
 /**

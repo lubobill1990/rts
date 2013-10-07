@@ -192,6 +192,24 @@ server.on('connection', function (socket) {
     }
   })
 })
-conn_pool.user_pool.on('userLogin',function(user_id){
-  console.log(user_id)
+DelayEventEmitter = require('./DelayEventEmitter').DelayEventEmitter
+login_logout_delay_emitter = new DelayEventEmitter('userLogin', 'userLogout', 3000, 1000);
+login_logout_delay_emitter.on(function (param_obj) {
+  console.log(param_obj)
+  //send user login and logout information to rts-client
+  request_lib.post('http://npeasy.com:13101/RTS/userLoginLogout', {
+    form: {
+      secret_key: postSecret,
+      data: param_obj
+    }})
+  //send user login and logout information to users
+})
+
+conn_pool.user_pool.on('userLogin', function (user_id) {
+  console.log('userLogin ' + user_id)
+  login_logout_delay_emitter.emit('userLogin', user_id, {user_id: user_id});
+})
+conn_pool.user_pool.on('userLogout', function (user_id) {
+  console.log('userLogout ' + user_id)
+  login_logout_delay_emitter.emit('userLogout', user_id, {user_id: user_id});
 })
